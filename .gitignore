@@ -1,0 +1,15 @@
+# Archivos temporales
+*.log
+*.tmp
+
+# Archivos de Excel
+*.xlsx
+*.xls
+
+# Archivos de Python
+__pycache__/
+*.py[cod]
+
+# Archivos de entorno virtual
+.env
+.venv/
