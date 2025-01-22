@@ -42,6 +42,7 @@ def procesar_archivo(archivo, rango_tabla, hoja_nombre="ESC2"):
     wb = load_workbook(archivo)
     hoja = wb[hoja_nombre]
     tabla = extraer_tabla_y_limpiar(hoja, rango_tabla)
+    
     df = pd.DataFrame(tabla)
     
     # Renombrar columnas usando la fila de encabezados
@@ -51,55 +52,68 @@ def procesar_archivo(archivo, rango_tabla, hoja_nombre="ESC2"):
     
     return df
 
-def consolidar_archivos(archivos, rango_tabla):
+def consolidar_archivos(archivos, rango_sumatoria, rango_tabla, hoja_nombre="ESC2"):
     """
-    Consolida los datos de múltiples archivos Excel.
-    Retorna un DataFrame con los valores sumados.
+    Consolida los datos de múltiples archivos Excel y retorna un DataFrame con los datos sumados.
+
+    Args:
+        archivos (list): Lista de rutas de los archivos.
+        rango_sumatoria (tuple): Tupla (min_row, min_col, max_row, max_col) del rango de valores a sumar.
+        hoja_nombre (str): Nombre de la hoja donde se encuentra la tabla.
+
+    Returns:
+        pd.DataFrame: DataFrame con los valores consolidados.
     """
+
+    # Extraer las coordenadas del rango de sumatoria
+    min_row, min_col, max_row, max_col = rango_sumatoria
+
+    # DataFrame consolidado intermedio
     consolidado = None
 
     for archivo in archivos:
-        df = procesar_archivo(archivo, rango_tabla)
+        # Procesar el archivo y extraer la tabla
+        df = procesar_archivo(archivo, rango_tabla=rango_tabla, hoja_nombre=hoja_nombre)
+
+        # Seleccionar rango numérico (filas y columnas relevantes)
+        rango_datos = df.iloc[min_row - 2 : max_row - 1 , min_col - 1  : max_col  ].copy()  # Ajuste de coordenadas
+
         
-        columnas_h = [col for col in df.columns if col.endswith("H")]
-        columnas_m = [col for col in df.columns if col.endswith("M")]
-        df[columnas_h] = df[columnas_h].apply(pd.to_numeric, errors='coerce').fillna(0)
-        df[columnas_m] = df[columnas_m].apply(pd.to_numeric, errors='coerce').fillna(0)
+        rango_datos = rango_datos.apply(pd.to_numeric, errors='coerce').fillna(0)  # Convertir a numérico
 
+        print(f"Archivo: {archivo}")
+        print(f"Rango seleccionado del DataFrame:")
+        print(rango_datos)
+        # Sumar al consolidado
         if consolidado is None:
-            consolidado = df
+            consolidado = rango_datos
         else:
-            consolidado[columnas_h] += df[columnas_h]
-            consolidado[columnas_m] += df[columnas_m]
-            print(f"Columnas H: {columnas_h}")
-            print(f"Columnas M: {columnas_m}")
-            print(f"Primer archivo procesado:\n{df[columnas_h].head()}")
-
+            consolidado += rango_datos
 
     return consolidado
 
-def calcular_totales(df):
+from openpyxl import load_workbook
+import pandas as pd
+
+def inyectar_datos_en_plantilla(df_consolidado, hoja_plantilla, rango_sumatoria):
     """
-    Calcula subtotales y totales de un DataFrame consolidado.
-    Retorna un DataFrame con los totales añadidos.
+    Inyecta los datos consolidados en una plantilla sin alterar el formato original, 
+    excepto la última fila con celdas combinadas.
+
+    Args:
+        df_consolidado (pd.DataFrame): DataFrame con los datos consolidados.
+        hoja_plantilla (openpyxl.worksheet.worksheet.Worksheet): Hoja de la plantilla base.
+        rango_sumatoria (tuple): Tupla (min_row, min_col, max_row, max_col) para el rango donde se inyectarán los datos.
     """
-    # Asegurar que el índice sea único y resetearlo si es necesario
-    df = df.reset_index(drop=True)
+    min_row, min_col, max_row, max_col = rango_sumatoria
 
-    # Identificar columnas H y M
-    columnas_h = [col for col in df.columns if col.endswith("H")]
-    columnas_m = [col for col in df.columns if col.endswith("M")]
+    # Asegurarse de que el DataFrame tenga suficientes datos para inyectar
+    for i, row in enumerate(df_consolidado.itertuples(index=False)):  # Se usa itertuples para evitar el uso del index
+        # Limitar la cantidad de filas a inyectar a las filas disponibles en el rango (max_row) menos la última fila
+        if min_row + i >= max_row:  # Evitar inyectar en la última fila
+            break
 
-    # Calcular subtotales por fila
-    df["Subtotal H"] = df[columnas_h].sum(axis=1)
-    df["Subtotal M"] = df[columnas_m].sum(axis=1)
+        for j in range(min_col, max_col + 1):  # Ya no es necesario saltar celdas por pares
+            hoja_plantilla.cell(row=min_row + i, column=j).value = row[j - min_col]
 
-    # Calcular totales generales
-    total_h = df["Subtotal H"].sum()
-    total_m = df["Subtotal M"].sum()
-
-    # Crear un DataFrame para los totales generales
-    df_totales = pd.DataFrame([["TOTAL", total_h, total_m]], columns=["Concepto", "Subtotal H", "Subtotal M"])
-
-    # Concatenar el DataFrame original con los totales
-    return pd.concat([df, df_totales], ignore_index=True)
+    # Los valores se inyectan directamente en la plantilla, que ya tiene el formato correcto
