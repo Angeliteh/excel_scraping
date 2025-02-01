@@ -178,6 +178,7 @@ def inyectar_formulas_totales_y_subtotales(archivo_salida, hoja_nombre="ZONA3", 
     wb.save(archivo_salida)
     print(f"Fórmulas inyectadas correctamente en las filas {fila_inicial} a {fila_final} de: {archivo_salida}")
 
+
 def convertir_formulas_a_valores(archivo_salida):
     """
     Abre el archivo en Excel, fuerza el cálculo de las fórmulas y guarda solo los valores.
